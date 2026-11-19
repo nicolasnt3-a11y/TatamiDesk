@@ -51,13 +51,18 @@ L'application est légère : elle ne fait aucun calcul quand on ne la touche pas
 
 ## Installation
 
-### Option 1 : l'exécutable (recommandé)
+### Option 1 : l'installeur Windows `TatamiDesk-Setup.exe` (recommandé)
+
+1. Télécharger `TatamiDesk-Setup.exe` dans la page [Releases](../../releases).
+2. Double-cliquer dessus pour lancer l'assistant d'installation (aucune ligne de commande requise). Windows peut afficher « Windows a protégé votre ordinateur » car l'exécutable n'est pas signé : cliquer sur « Informations complémentaires » puis « Exécuter quand même ».
+3. L'installeur installe Tatami Desk, crée le raccourci dans le menu Démarrer et propose le lancement automatique au démarrage de Windows.
+
+### Option 2 : exécutable portable (`TatamiDesk.exe`)
 
 1. Télécharger `TatamiDesk.exe` dans la page [Releases](../../releases).
-2. Le lancer. Windows peut afficher « Windows a protégé votre ordinateur » car l'exécutable n'est pas signé : cliquer sur « Informations complémentaires » puis « Exécuter quand même ».
-3. Double-clic sur l'icône Tatami Desk près de l'horloge pour ouvrir les paramètres, puis **Général > Installer** : l'application se copie dans `%APPDATA%\TatamiDesk\app` et crée son raccourci dans le menu Démarrer. Cocher « Lancer au démarrage de Windows » si souhaité.
+2. Le lancer directement (sans installation) ou utiliser **Paramètres > Général > Installer**.
 
-### Option 2 : depuis le code source
+### Option 3 : depuis le code source
 
 ```
 pip install -r requirements.txt

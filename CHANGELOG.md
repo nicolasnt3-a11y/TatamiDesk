@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.1 (2026-11-19)
+
+- Ajout de l'installeur Windows `TatamiDesk-Setup.exe` (Inno Setup) généré automatiquement dans les releases GitHub.
+
 ## v1.0.0 (2026-11-18)
 
 Première version publique.
