@@ -40,7 +40,7 @@ jobs:
         with:
           name: TatamiDesk
           path: |
-            dist/TatamiDesk-Setup.exe
+            dist/TatamiDesk-Setup-*.exe
             dist/TatamiDesk.exe
 
       - name: Publish release
@@ -48,6 +48,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/TatamiDesk-Setup.exe
+            dist/TatamiDesk-Setup-*.exe
             dist/TatamiDesk.exe
           body_path: CHANGELOG.md
