@@ -1379,8 +1379,9 @@ class PerfWidget(QWidget):
         pad = 12
         bar_w = max(40, w - pad * 2)
 
-        f_lbl = QFont(self.zone.app.font_name, 9, QFont.DemiBold)
-        f_val = QFont(self.zone.app.font_name, 9)
+        font_family = T.get("font") or "Segoe UI"
+        f_lbl = QFont(font_family, 9, QFont.DemiBold)
+        f_val = QFont(font_family, 9)
 
         rows = [
             ("CPU", f"{self.cpu:.0f}%", self.cpu / 100.0),
