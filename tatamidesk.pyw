@@ -1320,6 +1320,8 @@ class PerfWidget(QWidget):
         self.timer = QTimer(self)
         self.timer.setInterval(1000)
         self.timer.timeout.connect(self._sample)
+        if QApplication.instance():
+            QApplication.instance().aboutToQuit.connect(self.timer.stop)
 
     def set_active(self, on):
         if on:
