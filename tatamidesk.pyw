@@ -20,6 +20,8 @@ import subprocess
 import ctypes
 import math
 import struct
+import time
+import psutil
 
 from PySide6.QtCore import (QFileSystemWatcher, Qt, QPoint, QPointF, QRect, QRectF, QTimer, QUrl, QMimeData,
                             QFileInfo, QStandardPaths, QEvent)
@@ -1297,6 +1299,127 @@ class TabBar(QWidget):
 
 # --------------------------------------------------------------------------- zone
 
+class PerfWidget(QWidget):
+    """Widget natif de monitoring des performances PC (CPU, RAM, Réseau, Disque)."""
+    def __init__(self, zone):
+        super().__init__(zone)
+        self.zone = zone
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setCursor(Qt.ArrowCursor)
+        self.cpu = 0.0
+        self.ram_pct = 0.0
+        self.ram_used = 0.0
+        self.ram_total = 0.0
+        self.disk_pct = 0.0
+        self.disk_used = 0.0
+        self.disk_total = 0.0
+        self.net_up = 0.0
+        self.net_down = 0.0
+        self._last_net = psutil.net_io_counters()
+        self._last_t = time.monotonic()
+        self.timer = QTimer(self)
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self._sample)
+
+    def set_active(self, on):
+        if on:
+            if not self.timer.isActive():
+                psutil.cpu_percent(interval=None)
+                self._last_net = psutil.net_io_counters()
+                self._last_t = time.monotonic()
+                self._sample()
+                self.timer.start()
+        else:
+            self.timer.stop()
+
+    def _sample(self):
+        if not self.isVisible():
+            return
+        self.cpu = psutil.cpu_percent(interval=None)
+        vm = psutil.virtual_memory()
+        self.ram_pct = vm.percent
+        self.ram_used = vm.used / (1024 ** 3)
+        self.ram_total = vm.total / (1024 ** 3)
+        try:
+            du = psutil.disk_usage(os.environ.get("SystemDrive", "C:") + "\\")
+            self.disk_pct = du.percent
+            self.disk_used = du.used / (1024 ** 3)
+            self.disk_total = du.total / (1024 ** 3)
+        except Exception:
+            pass
+        now = time.monotonic()
+        net = psutil.net_io_counters()
+        dt = max(0.1, now - self._last_t)
+        self.net_up = max(0.0, (net.bytes_sent - self._last_net.bytes_sent) / dt)
+        self.net_down = max(0.0, (net.bytes_recv - self._last_net.bytes_recv) / dt)
+        self._last_net = net
+        self._last_t = now
+        self.update()
+
+    @staticmethod
+    def _fmt_rate(bps):
+        if bps < 1024:
+            return f"{bps:.0f} B/s"
+        if bps < 1024 ** 2:
+            return f"{bps / 1024:.1f} KB/s"
+        return f"{bps / (1024 ** 2):.2f} MB/s"
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        T = self.zone.app.theme
+        accent = QColor(self.zone.app.accent_for(self.zone))
+        txt_col = QColor(T["text"])
+        sub_col = QColor(T["text"])
+        sub_col.setAlpha(170)
+        track_col = QColor(T["text"])
+        track_col.setAlpha(35)
+
+        w = self.width()
+        pad = 12
+        bar_w = max(40, w - pad * 2)
+
+        f_lbl = QFont(self.zone.app.font_name, 9, QFont.DemiBold)
+        f_val = QFont(self.zone.app.font_name, 9)
+
+        rows = [
+            ("CPU", f"{self.cpu:.0f}%", self.cpu / 100.0),
+            ("RAM", f"{self.ram_used:.1f} / {self.ram_total:.0f} Go ({self.ram_pct:.0f}%)", self.ram_pct / 100.0),
+            ("Disque C:", f"{self.disk_used:.0f} / {self.disk_total:.0f} Go ({self.disk_pct:.0f}%)", self.disk_pct / 100.0),
+        ]
+
+        y = 10
+        for label, val, ratio in rows:
+            p.setFont(f_lbl)
+            p.setPen(txt_col)
+            p.drawText(QRect(pad, y, bar_w // 2, 16), Qt.AlignLeft | Qt.AlignVCenter, label)
+            p.setFont(f_val)
+            p.setPen(sub_col)
+            p.drawText(QRect(pad, y, bar_w, 16), Qt.AlignRight | Qt.AlignVCenter, val)
+            y += 18
+
+            # barre de progression
+            p.setPen(Qt.NoPen)
+            p.setBrush(track_col)
+            p.drawRoundedRect(QRectF(pad, y, bar_w, 6), 3, 3)
+            fill_col = QColor("#E05252") if ratio > 0.85 else (QColor("#E6A23C") if ratio > 0.65 else accent)
+            p.setBrush(fill_col)
+            fw = max(0.0, min(1.0, ratio)) * bar_w
+            if fw > 0:
+                p.drawRoundedRect(QRectF(pad, y, fw, 6), 3, 3)
+            y += 14
+
+        # Réseau (Upload / Download)
+        y += 2
+        p.setFont(f_lbl)
+        p.setPen(txt_col)
+        p.drawText(QRect(pad, y, 70, 18), Qt.AlignLeft | Qt.AlignVCenter, "Réseau")
+        p.setFont(f_val)
+        p.setPen(sub_col)
+        net_str = f"↓ {self._fmt_rate(self.net_down)}   ↑ {self._fmt_rate(self.net_up)}"
+        p.drawText(QRect(pad + 60, y, bar_w - 60, 18), Qt.AlignRight | Qt.AlignVCenter, net_str)
+
+
 class Zone(QWidget):
     def __init__(self, app, data):
         super().__init__(None, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnBottomHint)
@@ -1330,15 +1453,19 @@ class Zone(QWidget):
         self.scroll.viewport().setAutoFillBackground(False)
         self.grid = Grid(self)
         self.scroll.setWidget(self.grid)
+        self.perf = PerfWidget(self)
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.scroll)
+        self.stack.addWidget(self.perf)
         self.lay.addWidget(self.tabbar)
-        self.lay.addWidget(self.scroll, 1)
+        self.lay.addWidget(self.stack, 1)
         # curseur normal partout sauf sur les bords (sinon le curseur de redimensionnement "colle")
         self.tabbar.setCursor(Qt.ArrowCursor)
         self.scroll.setCursor(Qt.ArrowCursor)
         self.scroll.viewport().setCursor(Qt.ArrowCursor)
 
         collapsed = data.get("collapsed", False)
-        self.scroll.setVisible(not collapsed)
+        self.stack.setVisible(not collapsed)
         self.lay.setContentsMargins(EDGE, EDGE, EDGE, 0 if collapsed else EDGE)
         self.setGeometry(data.get("x", 60), data.get("y", 60), data.get("w", 520),
                          TITLE_H if collapsed else data.get("h", 260))
@@ -1417,7 +1544,12 @@ class Zone(QWidget):
     # -- contenu
     def refresh(self):
         self.tabbar.update()
-        self.grid.set_tiles([Tile(self, it) for it in self.items()])
+        tab = self.data["tabs"][self.active()]
+        is_perf = tab.get("type") == "perf"
+        self.stack.setCurrentIndex(1 if is_perf else 0)
+        self.perf.set_active(is_perf and not self.data.get("collapsed", False))
+        if not is_perf:
+            self.grid.set_tiles([Tile(self, it) for it in self.items()])
         self.update()
 
     def ensure_visible(self):
@@ -1440,7 +1572,9 @@ class Zone(QWidget):
         if c:
             self.data["h"] = self.height()
         self.data["collapsed"] = c
-        self.scroll.setVisible(not c)
+        self.stack.setVisible(not c)
+        tab = self.data["tabs"][self.active()]
+        self.perf.set_active(tab.get("type") == "perf" and not c)
         self.lay.setContentsMargins(EDGE, EDGE, EDGE, 0 if c else EDGE)
         self.resize(self.width(), TITLE_H if c else max(MIN_H, self.data.get("h", 260)))
         self.update()
@@ -1814,6 +1948,7 @@ class Zone(QWidget):
                 ms.addAction(f"    largeur seulement", lambda oo=o: a.match_size(self, oo, True, False))
                 ms.addAction(f"    hauteur seulement", lambda oo=o: a.match_size(self, oo, False, True))
         m.addAction("Nouvelle zone", lambda: a.new_zone(gp))
+        m.addAction("Nouvelle zone Performances", lambda: a.new_zone(gp, edit=False, name="Performances", tab_type="perf"))
         lock = m.addAction("Verrouiller les zones")
         lock.setCheckable(True)
         lock.setChecked(a.locked)
@@ -2821,16 +2956,20 @@ class TatamiApp:
                       TITLE_H if f.data.get("collapsed") else rect.height())
         win_push_bottom(f)
 
-    def new_zone(self, pos=None, edit=True, name="Nouvelle zone"):
+    def new_zone(self, pos=None, edit=True, name="Nouvelle zone", tab_type=None):
         n = len(self.zones)
         if isinstance(pos, QPoint):
             x, y = pos.x() + 20, pos.y() + 20
         else:
             g = QApplication.primaryScreen().availableGeometry()
             x, y = g.left() + 40 + 30 * (n % 10), g.top() + 40 + 30 * (n % 10)
-        d = {"id": uuid.uuid4().hex, "x": x, "y": y, "w": 520, "h": 260,
+        tab = {"name": name, "items": []}
+        if tab_type:
+            tab["type"] = tab_type
+        w, h = (320, 190) if tab_type == "perf" else (520, 260)
+        d = {"id": uuid.uuid4().hex, "x": x, "y": y, "w": w, "h": h,
              "color": ACCENTS[(n + 1) % len(ACCENTS)][1], "collapsed": False,
-             "tabs": [{"name": name, "items": []}], "active": 0}
+             "tabs": [tab], "active": 0}
         f = self.create_zone(d)
         self.save_soon()
         if edit:
@@ -3393,6 +3532,7 @@ class TatamiApp:
         bold.setFont(f)
         m.addSeparator()
         m.addAction("Nouvelle zone", lambda: self.new_zone())
+        m.addAction("Nouvelle zone Performances", lambda: self.new_zone(edit=False, name="Performances", tab_type="perf"))
         m.addAction("Afficher / masquer les zones", self.toggle_all)
         tm = sticky_submenu(m, "Thème")
         self.theme_actions = []
