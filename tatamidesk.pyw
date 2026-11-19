@@ -1369,11 +1369,9 @@ class PerfWidget(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
         T = self.zone.app.theme
         accent = QColor(self.zone.app.accent_for(self.zone))
-        txt_col = QColor(T["text"])
-        sub_col = QColor(T["text"])
-        sub_col.setAlpha(170)
-        track_col = QColor(T["text"])
-        track_col.setAlpha(35)
+        txt_col = rgba(T["text"])
+        sub_col = rgba(T["text"], 170)
+        track_col = rgba(T["text"], 35)
 
         w = self.width()
         pad = 12
